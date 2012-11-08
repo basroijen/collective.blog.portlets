@@ -4,6 +4,8 @@ from plone.portlets.interfaces import IPortletDataProvider
 from plone.app.portlets.portlets import base
 from Products.CMFCore.utils import getToolByName
 
+from Products.CMFPlone.i18nl10n import monthname_msgid
+
 from zope import schema
 from zope.formlib import form
 
@@ -23,17 +25,26 @@ class IArchivePortlet(IPortletDataProvider):
     same.
     """
 
+    header = schema.TextLine(title=_(u'Title of the portlet'),
+                             description=_(u'The text that will be shown as the title of the portlet'),
+                             required=False)
+
     archive_view = schema.TextLine(title=_(u"Archive view"),
                                    description=_(u"The name of the archive view"),
                                    default=u'blog_view',
                                    required=True)
+
+    reversed = schema.Bool(title=_(u"Reverse year and month list"),
+                           description=_("When checked, the first shown year will be the current one, and then the previous ones. The same applies to the months"),
+                           default=False,
+                           )
 
     root = schema.Choice(
         title=_(u"label_root_path", default=u"Root node"),
         description=_(u'help_root_path',
                       default=u"You may search for and choose a folder "
                                 "to act as the root of the list. "
-                                "Leave blank to use the folder where the portlet is created."),
+                                "Leave blank to use the Plone site root."),
         required=False,
         source=SearchableTextSourceBinder({'is_folderish': True},
                                           default_query='path:'))
@@ -48,10 +59,18 @@ class Assignment(base.Assignment):
 
     implements(IArchivePortlet)
 
+    header = u'Monthly archive'
     archive_view = u'blog_view'
+    reversed = False
 
-    def __init__(self, archive_view=u'blog_view', root=None):
+    def __init__(self, header=u'Monthly archive',
+                       archive_view=u'blog_view',
+                       reversed=False,
+                       root=None):
+
+        self.header = header
         self.archive_view = archive_view
+        self.reversed = reversed
         self.root = root
 
     @property
@@ -116,12 +135,23 @@ class Renderer(base.Renderer):
             months[month] = allmonths[year, month]
 
     def years(self):
-        return sorted(self._counts.keys())
+        items = sorted(self._counts.keys())
+        if self.data.reversed:
+            return reversed(items)
+
+        return items
 
     def months(self, year):
         # sort as integers, return as strings
         _months = sorted([int(m) for m in self._counts[year].keys()])
-        return [str(m) for m in _months]
+        items = [str(m) for m in _months]
+        if self.data.reversed:
+            return reversed(items)
+
+        return items
+
+    def monthname(self, month):
+        return monthname_msgid(month)
 
     def count(self, year, month):
         return self._counts[year][month]
@@ -137,7 +167,7 @@ class AddForm(base.AddForm):
 
     This is registered in configure.zcml. The form_fields variable tells
     zope.formlib which fields to display. The create() method actually
-2    constructs the assignment that is being added.
+    constructs the assignment that is being added.
     """
     form_fields = form.Fields(IArchivePortlet)
     form_fields['root'].custom_widget = UberSelectionWidget
